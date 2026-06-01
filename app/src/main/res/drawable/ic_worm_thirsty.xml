@@ -1,0 +1,23 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="100dp"
+    android:height="100dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <!-- Body Segments (drooping) -->
+    <path android:fillColor="#A1887F" android:pathData="M15,70a10,8 0,1 0,20 0a10,8 0,1 0,-20 0z" />
+    <path android:fillColor="#8D6E63" android:pathData="M30,75a12,8 0,1 0,24 0a12,8 0,1 0,-24 0z" />
+    <path android:fillColor="#795548" android:pathData="M50,78a15,10 0,1 0,30 0a15,10 0,1 0,-30 0z" />
+
+    <!-- Head (lowered) -->
+    <path android:fillColor="#6D4C41" android:pathData="M75,75a12,12 0,1 0,24 0a12,12 0,1 0,-24 0z" />
+
+    <!-- Tired/Sad Large Eyes -->
+    <path android:strokeColor="#000000" android:strokeWidth="1.5" android:pathData="M80,72l5,2M85,72l-5,2" />
+    <path android:strokeColor="#000000" android:strokeWidth="1.5" android:pathData="M90,72l5,2M95,72l-5,2" />
+
+    <!-- Thirsty Tongue -->
+    <path android:fillColor="#F06292" android:pathData="M86,82c0,3 2,5 4,5s4,-2 4,-5z" />
+
+    <!-- Sweat Drops -->
+    <path android:fillColor="#E1F5FE" android:pathData="M65,60c0,2 1,3 3,3s3,-1 3,-3s-3,-5 -3,-5s-3,3 -3,5z" />
+</vector>
