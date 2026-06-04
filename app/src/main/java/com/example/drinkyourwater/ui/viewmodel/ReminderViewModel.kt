@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import java.util.Date
 import java.util.concurrent.TimeUnit
 import com.example.drinkyourwater.notification.NotificationHelper
 
@@ -50,6 +51,7 @@ class ReminderViewModel(application: Application) : AndroidViewModel(application
 
     init {
         scheduleDailySummary()
+        refreshAllAlarms()
     }
 
     fun requestManualLog(type: String, name: String) {
@@ -65,6 +67,8 @@ class ReminderViewModel(application: Application) : AndroidViewModel(application
         _notificationsEnabled.value = enabled
         if (!enabled) {
             cancelAllAlarms()
+        } else {
+            refreshAllAlarms()
         }
     }
 
@@ -80,7 +84,7 @@ class ReminderViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun cancelAllAlarms() {
-        // Implementation for canceling alarms if needed
+        // Broad cancel can be hard with specific IDs, but we check notificationsEnabled in receivers anyway.
     }
 
     private fun scheduleDailySummary() {
@@ -116,7 +120,6 @@ class ReminderViewModel(application: Application) : AndroidViewModel(application
     val allMedicines: Flow<List<Medicine>> = reminderDao.getAllMedicines()
     val allWaterReminders: Flow<List<WaterReminder>> = reminderDao.getAllWaterReminders()
 
-    // Fetch history for the last 30 days to support the calendar view
     private val _historyTimeFilter = MutableStateFlow(Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -30) }.timeInMillis)
     
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -124,75 +127,39 @@ class ReminderViewModel(application: Application) : AndroidViewModel(application
         reminderDao.getHistorySince(startTime)
     }
 
-    fun setHistoryFilter(calendarField: Int) {
-        // Keep fetching at least 30 days or more if needed, but for now we'll just keep the 30-day window
-    }
-
-    private fun getTimeAgo(calendarField: Int): Long {
-        val calendar = Calendar.getInstance()
-        when (calendarField) {
-            Calendar.DAY_OF_YEAR -> {
-                calendar.set(Calendar.HOUR_OF_DAY, 0)
-                calendar.set(Calendar.MINUTE, 0)
-                calendar.set(Calendar.SECOND, 0)
-            }
-            Calendar.WEEK_OF_YEAR -> calendar.add(Calendar.WEEK_OF_YEAR, -1)
-            Calendar.MONTH -> calendar.add(Calendar.MONTH, -1)
-        }
-        return calendar.timeInMillis
-    }
+    fun setHistoryFilter(calendarField: Int) {}
 
     fun markMedicineAsTaken(medicine: Medicine) {
         viewModelScope.launch {
-            reminderDao.insertHistory(
-                ReminderHistory(type = "MEDICINE", name = medicine.name)
-            )
+            reminderDao.insertHistory(ReminderHistory(type = "MEDICINE", name = medicine.name))
             DrinkWidget().updateAll(getApplication())
         }
     }
 
     fun markWaterAsDrank(waterReminder: WaterReminder) {
         viewModelScope.launch {
-            reminderDao.insertHistory(
-                ReminderHistory(type = "WATER", name = "Water Reminder")
-            )
+            reminderDao.insertHistory(ReminderHistory(type = "WATER", name = "Water Reminder"))
             DrinkWidget().updateAll(getApplication())
         }
     }
 
-    fun addMedicine(name: String, date: String, time: String, intervalMinutes: Int, timesPerDay: Int, repeatDays: String, endDate: String?) {
+    fun addMedicine(name: String, date: String, time: String, interval: Int, times: Int, repeatDays: String, endDate: String?) {
         viewModelScope.launch {
-            val medicine = Medicine(
-                name = name,
-                date = date,
-                time = time,
-                repeatDays = repeatDays,
-                intervalMinutes = intervalMinutes,
-                timesPerDay = timesPerDay,
-                endDate = endDate,
-                isPaused = false
-            )
+            val medicine = Medicine(name = name, date = date, time = time, repeatDays = repeatDays, intervalMinutes = interval, timesPerDay = times, endDate = endDate, isPaused = false)
             reminderDao.insertMedicine(medicine)
             if (_notificationsEnabled.value) {
-                scheduleReminderAlarms(name, time, intervalMinutes, if (repeatDays.isNotEmpty()) 10 else timesPerDay, repeatDays)
+                scheduleReminderAlarms(name, date, time, interval, times, repeatDays, endDate)
             }
             DrinkWidget().updateAll(getApplication())
         }
     }
 
-    fun addWaterReminder(date: String, startTime: String, intervalMinutes: Int, timesPerDay: Int, repeatDays: String) {
+    fun addWaterReminder(date: String, startTime: String, interval: Int, times: Int, repeatDays: String) {
         viewModelScope.launch {
-            val waterReminder = WaterReminder(
-                date = date,
-                startTime = startTime,
-                intervalMinutes = intervalMinutes,
-                timesPerDay = timesPerDay,
-                repeatDays = repeatDays,
-                isPaused = false
-            )
+            val waterReminder = WaterReminder(date = date, startTime = startTime, intervalMinutes = interval, timesPerDay = times, repeatDays = repeatDays, isPaused = false)
             reminderDao.insertWaterReminder(waterReminder)
             if (_notificationsEnabled.value) {
-                scheduleReminderAlarms("Water", startTime, intervalMinutes, if (repeatDays.isNotEmpty()) 10 else timesPerDay, repeatDays)
+                scheduleReminderAlarms("Water", date, startTime, interval, times, repeatDays, null)
             }
             DrinkWidget().updateAll(getApplication())
         }
@@ -203,7 +170,7 @@ class ReminderViewModel(application: Application) : AndroidViewModel(application
             val updated = medicine.copy(isPaused = !medicine.isPaused)
             reminderDao.insertMedicine(updated)
             if (!updated.isPaused && _notificationsEnabled.value) {
-                scheduleReminderAlarms(updated.name, updated.time, updated.intervalMinutes, if (updated.repeatDays.isNotEmpty()) 10 else updated.timesPerDay, updated.repeatDays)
+                scheduleReminderAlarms(updated.name, updated.date, updated.time, updated.intervalMinutes, updated.timesPerDay, updated.repeatDays, updated.endDate)
             }
             DrinkWidget().updateAll(getApplication())
         }
@@ -214,118 +181,50 @@ class ReminderViewModel(application: Application) : AndroidViewModel(application
             val updated = waterReminder.copy(isPaused = !waterReminder.isPaused)
             reminderDao.insertWaterReminder(updated)
             if (!updated.isPaused && _notificationsEnabled.value) {
-                scheduleReminderAlarms("Water", updated.startTime, updated.intervalMinutes, if (updated.repeatDays.isNotEmpty()) 10 else updated.timesPerDay, updated.repeatDays)
+                scheduleReminderAlarms("Water", updated.date, updated.startTime, updated.intervalMinutes, updated.timesPerDay, updated.repeatDays, null)
             }
             DrinkWidget().updateAll(getApplication())
         }
     }
 
-    private fun scheduleReminderAlarms(name: String, startTime: String, intervalMinutes: Int, times: Int, repeatDays: String) {
-        val sdf24 = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-        val now = Calendar.getInstance()
-        
-        val startCal = Calendar.getInstance().apply {
-            val date = try { sdf24.parse(startTime) } catch(e: Exception) { null } ?: return
-            val tempCal = Calendar.getInstance().apply { time = date }
-            set(Calendar.HOUR_OF_DAY, tempCal.get(Calendar.HOUR_OF_DAY))
-            set(Calendar.MINUTE, tempCal.get(Calendar.MINUTE))
-            set(Calendar.SECOND, 0)
-        }
-
-        val enabledDays = repeatDays.split(",").filter { it.isNotEmpty() }.map { it.toInt() }
-
-        for (i in 0 until times) {
-            val currentSlot = (startCal.clone() as Calendar)
-            
-            if (enabledDays.isEmpty() || enabledDays.contains(currentSlot.get(Calendar.DAY_OF_WEEK))) {
-                val type = if (name == "Water") "WATER" else "MEDICINE"
-                // Generate unique but consistent IDs for this slot
-                val baseId = (name.hashCode() + i).let { if (it == Int.MIN_VALUE) 0 else Math.abs(it) } % 1000000
-                
-                // Alarm 1: 10 minutes before
-                val tMinus10 = (currentSlot.clone() as Calendar).apply { add(Calendar.MINUTE, -10) }
-                if (tMinus10.after(now)) {
-                    scheduleAlarm("Upcoming: $name", "10 minutes left to take your $name!", tMinus10.timeInMillis, type, name, currentSlot.timeInMillis, baseId + 1000000)
-                }
-                
-                // Alarm 2: 1 minute before
-                val tMinus1 = (currentSlot.clone() as Calendar).apply { add(Calendar.MINUTE, -1) }
-                if (tMinus1.after(now)) {
-                    scheduleAlarm("Action Needed: $name", "1 minute left! Please take your $name.", tMinus1.timeInMillis, type, name, currentSlot.timeInMillis, baseId + 2000000)
-                }
-
-                // Missed Check: 30 minutes after
-                val tPlus30 = (currentSlot.clone() as Calendar).apply { add(Calendar.MINUTE, 30) }
-                if (tPlus30.after(now)) {
-                    scheduleMissedCheck(type, name, currentSlot.timeInMillis, tPlus30.timeInMillis, baseId + 3000000)
-                }
-            }
-
-            if (intervalMinutes > 0) {
-                startCal.add(Calendar.MINUTE, intervalMinutes)
-            } else {
-                break
-            }
-        }
-    }
-
-    private fun scheduleAlarm(title: String, message: String, timeInMillis: Long, type: String? = null, name: String? = null, scheduledTime: Long? = null, requestCode: Int = 0) {
-        val intent = Intent(getApplication(), AlarmReceiver::class.java).apply {
-            putExtra("title", title)
-            putExtra("message", message)
-            putExtra("type", type)
-            putExtra("name", name)
-            putExtra("scheduledTime", scheduledTime)
-        }
-        
-        val finalRequestCode = if (requestCode == 0) timeInMillis.toInt() else requestCode
-
-        val pendingIntent = PendingIntent.getBroadcast(
-            getApplication(),
-            finalRequestCode,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        if (alarmManager.canScheduleExactAlarms()) {
-            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
-        } else {
-            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
-        }
-    }
-
-    private fun scheduleMissedCheck(type: String, name: String, scheduledTime: Long, checkTime: Long, requestCode: Int = 0) {
-        val intent = Intent(getApplication(), MissedIntervalReceiver::class.java).apply {
-            putExtra("type", type)
-            putExtra("name", name)
-            putExtra("scheduledTime", scheduledTime)
-        }
-        
-        val finalRequestCode = if (requestCode == 0) checkTime.toInt() else requestCode
-
-        val pendingIntent = PendingIntent.getBroadcast(
-            getApplication(),
-            finalRequestCode,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        if (alarmManager.canScheduleExactAlarms()) {
-            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, checkTime, pendingIntent)
-        } else {
-            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, checkTime, pendingIntent)
-        }
-    }
-
-    fun addManualHistory(type: String, name: String, date: String, time: String) {
+    fun updateMedicine(medicine: Medicine) {
         viewModelScope.launch {
-            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
-            val timestamp = try {
-                sdf.parse("$date $time")?.time ?: System.currentTimeMillis()
-            } catch (e: Exception) {
-                System.currentTimeMillis()
+            reminderDao.insertMedicine(medicine)
+            if (_notificationsEnabled.value && !medicine.isPaused) {
+                scheduleReminderAlarms(medicine.name, medicine.date, medicine.time, medicine.intervalMinutes, medicine.timesPerDay, medicine.repeatDays, medicine.endDate)
             }
-            reminderDao.insertHistory(ReminderHistory(type = type, name = name, timestamp = timestamp))
+            DrinkWidget().updateAll(getApplication())
+        }
+    }
+
+    fun updateWaterReminder(waterReminder: WaterReminder) {
+        viewModelScope.launch {
+            reminderDao.insertWaterReminder(waterReminder)
+            if (_notificationsEnabled.value && !waterReminder.isPaused) {
+                scheduleReminderAlarms("Water", waterReminder.date, waterReminder.startTime, waterReminder.intervalMinutes, waterReminder.timesPerDay, waterReminder.repeatDays, null)
+            }
+            DrinkWidget().updateAll(getApplication())
+        }
+    }
+
+    fun updateMedicineTime(medicine: Medicine, newTime: String) {
+        viewModelScope.launch {
+            val updatedMedicine = medicine.copy(time = newTime)
+            reminderDao.insertMedicine(updatedMedicine)
+            if (_notificationsEnabled.value && !updatedMedicine.isPaused) {
+                scheduleReminderAlarms(medicine.name, medicine.date, newTime, medicine.intervalMinutes, medicine.timesPerDay, medicine.repeatDays, medicine.endDate)
+            }
+            DrinkWidget().updateAll(getApplication())
+        }
+    }
+
+    fun updateWaterTime(waterReminder: WaterReminder, newTime: String) {
+        viewModelScope.launch {
+            val updatedWater = waterReminder.copy(startTime = newTime)
+            reminderDao.insertWaterReminder(updatedWater)
+            if (_notificationsEnabled.value && !updatedWater.isPaused) {
+                scheduleReminderAlarms("Water", waterReminder.date, newTime, waterReminder.intervalMinutes, waterReminder.timesPerDay, waterReminder.repeatDays, null)
+            }
             DrinkWidget().updateAll(getApplication())
         }
     }
@@ -344,45 +243,91 @@ class ReminderViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun updateMedicine(medicine: Medicine) {
+    fun addManualHistory(type: String, name: String, date: String, time: String) {
         viewModelScope.launch {
-            reminderDao.insertMedicine(medicine)
-            if (_notificationsEnabled.value && !medicine.isPaused) {
-                scheduleReminderAlarms(medicine.name, medicine.time, medicine.intervalMinutes, if (medicine.repeatDays.isNotEmpty()) 10 else medicine.timesPerDay, medicine.repeatDays)
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+            val timestamp = try {
+                sdf.parse("$date $time")?.time ?: System.currentTimeMillis()
+            } catch (e: Exception) {
+                System.currentTimeMillis()
             }
+            reminderDao.insertHistory(ReminderHistory(type = type, name = name, timestamp = timestamp))
             DrinkWidget().updateAll(getApplication())
         }
     }
 
-    fun updateWaterReminder(waterReminder: WaterReminder) {
+    private fun refreshAllAlarms() {
         viewModelScope.launch {
-            reminderDao.insertWaterReminder(waterReminder)
-            if (_notificationsEnabled.value && !waterReminder.isPaused) {
-                scheduleReminderAlarms("Water", waterReminder.startTime, waterReminder.intervalMinutes, if (waterReminder.repeatDays.isNotEmpty()) 10 else waterReminder.timesPerDay, waterReminder.repeatDays)
+            val medicines = reminderDao.getAllMedicinesList()
+            val waterReminders = reminderDao.getAllWaterRemindersList()
+            if (_notificationsEnabled.value) {
+                medicines.filter { !it.isPaused }.forEach { scheduleReminderAlarms(it.name, it.date, it.time, it.intervalMinutes, it.timesPerDay, it.repeatDays, it.endDate) }
+                waterReminders.filter { !it.isPaused }.forEach { scheduleReminderAlarms("Water", it.date, it.startTime, it.intervalMinutes, it.timesPerDay, it.repeatDays, null) }
             }
-            DrinkWidget().updateAll(getApplication())
         }
     }
 
-    fun updateMedicineTime(medicine: Medicine, newTime: String) {
-        viewModelScope.launch {
-            val updatedMedicine = medicine.copy(time = newTime)
-            reminderDao.insertMedicine(updatedMedicine)
-            if (_notificationsEnabled.value && !updatedMedicine.isPaused) {
-                scheduleReminderAlarms(medicine.name, newTime, medicine.intervalMinutes, if (medicine.repeatDays.isNotEmpty()) 10 else medicine.timesPerDay, medicine.repeatDays)
+    private fun scheduleReminderAlarms(name: String, startDate: String, startTime: String, interval: Int, times: Int, repeatDays: String, endDate: String?) {
+        val sdfDate = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+        val sdfTime = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+        val now = Calendar.getInstance()
+        
+        val startCal = Calendar.getInstance().apply {
+            val d = try { sdfDate.parse(startDate) } catch(e: Exception) { null } ?: Date()
+            val t = try { sdfTime.parse(startTime) } catch(e: Exception) { null } ?: Date()
+            val dCal = Calendar.getInstance().apply { time = d }
+            val tCal = Calendar.getInstance().apply { time = t }
+            set(dCal.get(Calendar.YEAR), dCal.get(Calendar.MONTH), dCal.get(Calendar.DAY_OF_MONTH), tCal.get(Calendar.HOUR_OF_DAY), tCal.get(Calendar.MINUTE), 0)
+        }
+
+        val endCal = endDate?.let {
+            Calendar.getInstance().apply {
+                time = try { sdfDate.parse(it) } catch(e: Exception) { null } ?: Date(Long.MAX_VALUE)
+                set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59)
             }
-            DrinkWidget().updateAll(getApplication())
+        } ?: Calendar.getInstance().apply { timeInMillis = Long.MAX_VALUE }
+
+        val enabledDays = repeatDays.split(",").filter { it.isNotEmpty() }.map { it.toInt() }
+        val limit = (Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 14) })
+        
+        val dayWalker = (startCal.clone() as Calendar)
+        while (dayWalker.before(endCal) && dayWalker.before(limit)) {
+            if (enabledDays.isEmpty() || enabledDays.contains(dayWalker.get(Calendar.DAY_OF_WEEK))) {
+                for (doseNum in 0 until times) {
+                    val doseSlot = (dayWalker.clone() as Calendar)
+                    if (interval > 0) doseSlot.add(Calendar.MINUTE, doseNum * interval) else if (doseNum > 0) break
+                    
+                    if (doseSlot.after(now) && doseSlot.before(endCal)) {
+                        val type = if (name == "Water") "WATER" else "MEDICINE"
+                        val baseId = Math.abs(name.hashCode() + doseSlot.get(Calendar.DAY_OF_YEAR) * 31 + doseNum) % 1000000
+                        scheduleAlarm("Upcoming: $name", "10 minutes left!", doseSlot.timeInMillis - 600000, type, name, doseSlot.timeInMillis, baseId + 1000000)
+                        scheduleAlarm("Action Needed: $name", "1 minute left!", doseSlot.timeInMillis - 60000, type, name, doseSlot.timeInMillis, baseId + 2000000)
+                        scheduleMissedCheck(type, name, doseSlot.timeInMillis, doseSlot.timeInMillis + 1800000, baseId + 3000000)
+                    }
+                }
+            }
+            dayWalker.add(Calendar.DAY_OF_YEAR, 1)
+            val tCal = Calendar.getInstance().apply { time = try { sdfTime.parse(startTime)!! } catch(e:Exception){Date()} }
+            dayWalker.set(Calendar.HOUR_OF_DAY, tCal.get(Calendar.HOUR_OF_DAY)); dayWalker.set(Calendar.MINUTE, tCal.get(Calendar.MINUTE))
         }
     }
 
-    fun updateWaterTime(waterReminder: WaterReminder, newTime: String) {
-        viewModelScope.launch {
-            val updatedWater = waterReminder.copy(startTime = newTime)
-            reminderDao.insertWaterReminder(updatedWater)
-            if (_notificationsEnabled.value && !updatedWater.isPaused) {
-                scheduleReminderAlarms("Water", newTime, waterReminder.intervalMinutes, if (updatedWater.repeatDays.isNotEmpty()) 10 else updatedWater.timesPerDay, updatedWater.repeatDays)
-            }
-            DrinkWidget().updateAll(getApplication())
+    private fun scheduleAlarm(title: String, message: String, timeInMillis: Long, type: String?, name: String?, scheduledTime: Long?, requestCode: Int) {
+        if (timeInMillis < System.currentTimeMillis()) return
+        val intent = Intent(getApplication(), AlarmReceiver::class.java).apply {
+            putExtra("title", title); putExtra("message", message); putExtra("type", type); putExtra("name", name); putExtra("scheduledTime", scheduledTime)
         }
+        val pendingIntent = PendingIntent.getBroadcast(getApplication(), requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        if (alarmManager.canScheduleExactAlarms()) alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
+        else alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
+    }
+
+    private fun scheduleMissedCheck(type: String, name: String, scheduledTime: Long, checkTime: Long, requestCode: Int) {
+        val intent = Intent(getApplication(), MissedIntervalReceiver::class.java).apply {
+            putExtra("type", type); putExtra("name", name); putExtra("scheduledTime", scheduledTime)
+        }
+        val pendingIntent = PendingIntent.getBroadcast(getApplication(), requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        if (alarmManager.canScheduleExactAlarms()) alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, checkTime, pendingIntent)
+        else alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, checkTime, pendingIntent)
     }
 }

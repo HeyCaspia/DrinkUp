@@ -38,13 +38,11 @@ class DrinkWidget : GlanceAppWidget() {
         val database = ReminderDatabase.getDatabase(context)
         val dao = database.reminderDao()
         
+        val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val wakeupTime = prefs.getString("wakeup_time", "07:00") ?: "07:00"
+
         val now = Calendar.getInstance()
-        val todayStart = (now.clone() as Calendar).apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
+        val cycleStartTime = DateTimeUtils.getLastWakeUpTime(wakeupTime)
 
         val dateFormat = SimpleDateFormat("EEE, MMM d", Locale.getDefault())
         val dateString = dateFormat.format(now.time)
@@ -52,8 +50,8 @@ class DrinkWidget : GlanceAppWidget() {
         // Fetch direct snapshots
         val medicines = withContext(Dispatchers.IO) { dao.getAllMedicinesList() }
         val waterReminders = withContext(Dispatchers.IO) { dao.getAllWaterRemindersList() }
-        val history = withContext(Dispatchers.IO) { dao.getHistorySinceList(todayStart) }
-        val allHistory = withContext(Dispatchers.IO) { dao.getHistorySinceList(0) } // For calculateNextTime
+        val history = withContext(Dispatchers.IO) { dao.getHistorySinceList(cycleStartTime) }
+        val allHistory = withContext(Dispatchers.IO) { dao.getHistorySinceList(0) } 
         
         val currentDay = now.get(Calendar.DAY_OF_WEEK)
         
@@ -69,7 +67,7 @@ class DrinkWidget : GlanceAppWidget() {
         }
         
         // Water progress
-        val waterDrank = history.count { it.type == "WATER" }
+        val waterDrank = history.count { it.type == "WATER" && it.name == "Water Reminder" }
         val waterGoal = if (waterReminders.isNotEmpty()) waterReminders.sumOf { it.timesPerDay } else 8
         val isWaterPending = waterDrank < waterGoal
 
@@ -127,7 +125,7 @@ class DrinkWidget : GlanceAppWidget() {
                 } else {
                     pendingMeds.take(3).forEach { med ->
                         val lastLog = allHistory.filter { it.type == "MEDICINE" && it.name == med.name }.maxByOrNull { it.timestamp }?.timestamp
-                        val nextTime = DateTimeUtils.calculateNextTime(med.time, med.intervalMinutes, med.timesPerDay, lastLog)
+                        val nextTime = DateTimeUtils.calculateNextTime(med.time, med.intervalMinutes, med.timesPerDay, lastLog, wakeupTime, allHistory, "MEDICINE", med.name)
                         
                         WidgetRow(
                             label = med.name,
@@ -139,7 +137,7 @@ class DrinkWidget : GlanceAppWidget() {
                     if (isWaterPending) {
                         val lastWaterLog = allHistory.filter { it.type == "WATER" }.maxByOrNull { it.timestamp }?.timestamp
                         val nextWaterTime = if (waterReminders.isNotEmpty()) {
-                            DateTimeUtils.calculateNextTime(waterReminders.first().startTime, waterReminders.first().intervalMinutes, waterReminders.first().timesPerDay, lastWaterLog)
+                            DateTimeUtils.calculateNextTime(waterReminders.first().startTime, waterReminders.first().intervalMinutes, waterReminders.first().timesPerDay, lastWaterLog, wakeupTime, allHistory, "WATER", "Water Reminder")
                         } else "Pending"
 
                         WidgetRow(

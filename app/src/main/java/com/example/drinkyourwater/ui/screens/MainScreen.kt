@@ -323,7 +323,8 @@ fun MainScreen(
                             onDelete = { confirmDeleteMedicine = it },
                             onDone = { med -> confirmMedicineByMed = med },
                             onPause = { viewModel.togglePauseMedicine(it) },
-                            onEdit = { editingMedicine = it }
+                            onEdit = { editingMedicine = it },
+                            wakeupTime = viewModel.wakeupTime.collectAsState(initial = "07:00").value
                         )
                     }
                 }
@@ -338,7 +339,8 @@ fun MainScreen(
                             onDelete = { confirmDeleteWater = it },
                             onDone = { rem -> confirmWaterByRem = rem },
                             onPause = { viewModel.togglePauseWater(it) },
-                            onEdit = { editingWater = it }
+                            onEdit = { editingWater = it },
+                            wakeupTime = viewModel.wakeupTime.collectAsState(initial = "07:00").value
                         )
                     }
                 }
@@ -456,15 +458,13 @@ fun EmptyState() {
 }
 
 @Composable
-fun MedicineItem(medicine: Medicine, history: List<ReminderHistory>, onDelete: (Medicine) -> Unit, onDone: (Medicine) -> Unit, onPause: (Medicine) -> Unit, onEdit: (Medicine) -> Unit) {
-    val todayStart = Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
+fun MedicineItem(medicine: Medicine, history: List<ReminderHistory>, onDelete: (Medicine) -> Unit, onDone: (Medicine) -> Unit, onPause: (Medicine) -> Unit, onEdit: (Medicine) -> Unit, wakeupTime: String) {
+    val cycleStartTime = DateTimeUtils.getLastWakeUpTime(wakeupTime)
     val currentDayOfWeek = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
     val enabledDays = medicine.repeatDays.split(",").filter { it.isNotEmpty() }.map { it.toInt() }
     val isEnabledToday = enabledDays.isEmpty() || enabledDays.contains(currentDayOfWeek)
-    val dosesTakenToday = history.count { it.type == "MEDICINE" && it.name == medicine.name && it.timestamp >= todayStart }
-    val isDoneForToday = dosesTakenToday >= medicine.timesPerDay
+    val dosesTakenInCycle = history.count { it.type == "MEDICINE" && it.name == medicine.name && it.timestamp >= cycleStartTime }
+    val isDoneForToday = dosesTakenInCycle >= medicine.timesPerDay
 
     Card(
         modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
@@ -489,7 +489,7 @@ fun MedicineItem(medicine: Medicine, history: List<ReminderHistory>, onDelete: (
                     }
                 }
                 val lastLog = history.filter { it.type == "MEDICINE" && it.name == medicine.name }.maxByOrNull { it.timestamp }?.timestamp
-                val nextTime = DateTimeUtils.calculateNextTime(medicine.time, medicine.intervalMinutes, medicine.timesPerDay, lastLog)
+                val nextTime = DateTimeUtils.calculateNextTime(medicine.time, medicine.intervalMinutes, medicine.timesPerDay, lastLog, wakeupTime, history, "MEDICINE", medicine.name)
                 Text(text = if (medicine.isPaused) "Reminders paused" else if (!isEnabledToday) "Not scheduled for today" else if (isDoneForToday) "All doses taken today!" else "Next: $nextTime", style = MaterialTheme.typography.bodyMedium, color = if (isDoneForToday || !isEnabledToday || medicine.isPaused) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                 if (isEnabledToday && !isDoneForToday && !medicine.isPaused) {
                     Text(text = "Initial: ${DateTimeUtils.formatTo12Hour(medicine.time)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -525,14 +525,13 @@ fun MedicineItem(medicine: Medicine, history: List<ReminderHistory>, onDelete: (
 }
 
 @Composable
-fun WaterReminderItem(waterReminder: WaterReminder, history: List<ReminderHistory>, onDelete: (WaterReminder) -> Unit, onDone: (WaterReminder) -> Unit, onPause: (WaterReminder) -> Unit, onEdit: (WaterReminder) -> Unit) {
-    val todayStart = Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
+fun WaterReminderItem(waterReminder: WaterReminder, history: List<ReminderHistory>, onDelete: (WaterReminder) -> Unit, onDone: (WaterReminder) -> Unit, onPause: (WaterReminder) -> Unit, onEdit: (WaterReminder) -> Unit, wakeupTime: String) {
+    val cycleStartTime = DateTimeUtils.getLastWakeUpTime(wakeupTime)
     val currentDayOfWeek = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
     val enabledDays = waterReminder.repeatDays.split(",").filter { it.isNotEmpty() }.map { it.toInt() }
     val isEnabledToday = enabledDays.isEmpty() || enabledDays.contains(currentDayOfWeek)
-    val glassesToday = history.count { it.type == "WATER" && it.timestamp >= todayStart }
+    val glassesDrankInCycle = history.count { it.type == "WATER" && it.timestamp >= cycleStartTime }
+    val isDoneForToday = glassesDrankInCycle >= waterReminder.timesPerDay
 
     Card(
         modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
@@ -557,7 +556,7 @@ fun WaterReminderItem(waterReminder: WaterReminder, history: List<ReminderHistor
                     }
                 }
                 val lastLog = history.filter { it.type == "WATER" }.maxByOrNull { it.timestamp }?.timestamp
-                val nextTime = DateTimeUtils.calculateNextTime(waterReminder.startTime, waterReminder.intervalMinutes, waterReminder.timesPerDay, lastLog)
+                val nextTime = DateTimeUtils.calculateNextTime(waterReminder.startTime, waterReminder.intervalMinutes, waterReminder.timesPerDay, lastLog, wakeupTime, history, "WATER", "Water Reminder")
                 Text(text = if (waterReminder.isPaused) "Reminders paused" else if (!isEnabledToday) "Not scheduled for today" else "Next: $nextTime", style = MaterialTheme.typography.bodyMedium, color = if (!isEnabledToday || waterReminder.isPaused) MaterialTheme.colorScheme.outline else Color(0xFF2196F3), fontWeight = FontWeight.SemiBold)
                 if (isEnabledToday && !waterReminder.isPaused) {
                     Text(text = "Start: ${DateTimeUtils.formatTo12Hour(waterReminder.startTime)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -576,7 +575,7 @@ fun WaterReminderItem(waterReminder: WaterReminder, history: List<ReminderHistor
                     hours > 0 -> "${hours}h"
                     else -> "${mins}m"
                 }
-                Text(text = "Drank: $glassesToday/${waterReminder.timesPerDay} today • Every $intervalText", style = MaterialTheme.typography.labelSmall, color = if (!isEnabledToday || waterReminder.isPaused) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.secondary)
+                Text(text = "Drank: $glassesDrankInCycle/${waterReminder.timesPerDay} today • Every $intervalText", style = MaterialTheme.typography.labelSmall, color = if (!isEnabledToday || waterReminder.isPaused) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.secondary)
             }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

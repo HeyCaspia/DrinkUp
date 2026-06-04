@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.drinkyourwater.data.ReminderDatabase
-import java.util.Calendar
 
 class DailySummaryWorker(
     context: Context,
@@ -16,20 +15,17 @@ class DailySummaryWorker(
         val dao = database.reminderDao()
         val helper = NotificationHelper(applicationContext)
         
-        val todayStart = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
+        // Window: Last 24 hours from right now (which is triggered at bedtime)
+        val endTime = System.currentTimeMillis()
+        val startTime = endTime - (24 * 60 * 60 * 1000)
         
         // 1. Check missed medicines (only those not paused)
         val medicines = dao.getAllMedicinesList().filter { !it.isPaused }
         val missedMedicines = mutableListOf<String>()
         
         for (med in medicines) {
-            val countToday = dao.getMedicineCountSince(med.name, todayStart)
-            if (countToday < med.timesPerDay) {
+            val countInWindow = dao.getLogCountInRange("MEDICINE", med.name, startTime, endTime)
+            if (countInWindow < med.timesPerDay) {
                 missedMedicines.add(med.name)
             }
         }
@@ -37,23 +33,23 @@ class DailySummaryWorker(
         if (missedMedicines.isNotEmpty()) {
             helper.showNotification(
                 "Missed Medicine!",
-                "You still have doses to take: ${missedMedicines.joinToString(", ")}. Don't forget!"
+                "In the last 24 hours, you missed doses for: ${missedMedicines.joinToString(", ")}. Don't forget!"
             )
         }
         
         // 2. Check water intake (only if not paused)
         val isWaterPaused = dao.getAllWaterRemindersList().any { it.isPaused }
         if (!isWaterPaused) {
-            val waterCount = dao.getWaterCountSince(todayStart)
+            val waterCount = dao.getLogCountInRange("WATER", "Water Reminder", startTime, endTime)
             if (waterCount < 8) {
                 helper.showNotification(
                     "Hydration Alert",
-                    "You haven't been drinking enough, bruh. Only $waterCount glasses so far!"
+                    "You didn't drink enough water in the last 24 hours. Only $waterCount glasses logged!"
                 )
             } else {
                 helper.showNotification(
                     "Daily Summary",
-                    "You drank $waterCount glasses of water today! Great job staying hydrated."
+                    "You drank $waterCount glasses of water in the last 24 hours! Great job staying hydrated."
                 )
             }
         }

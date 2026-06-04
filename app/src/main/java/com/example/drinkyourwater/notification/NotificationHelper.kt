@@ -52,7 +52,7 @@ class NotificationHelper(private val context: Context) {
         return bitmap
     }
 
-    fun showNotification(title: String, message: String, type: String? = null, name: String? = null) {
+    fun showNotification(title: String, message: String, type: String? = null, name: String? = null, scheduledTime: Long? = null) {
         val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
         val notificationId = name?.hashCode() ?: title.hashCode()
         
@@ -71,20 +71,52 @@ class NotificationHelper(private val context: Context) {
             .setColor(context.getColor(android.R.color.holo_green_dark))
 
         if (type != null && name != null) {
-            val logIntent = Intent(context, com.example.drinkyourwater.MainActivity::class.java).apply {
+            // Button 1: JUST NOW (Background action using current time)
+            val justNowIntent = Intent(context, LogActionReceiver::class.java).apply {
+                putExtra("type", type)
+                putExtra("name", name)
+                putExtra("notificationId", notificationId)
+            }
+            val justNowPendingIntent = PendingIntent.getBroadcast(
+                context,
+                notificationId + 100,
+                justNowIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(android.R.drawable.ic_menu_edit, "JUST NOW", justNowPendingIntent)
+
+            // Button 2: ON SCHED (Background action using scheduled time)
+            if (scheduledTime != null && scheduledTime > 0) {
+                val onSchedIntent = Intent(context, LogActionReceiver::class.java).apply {
+                    putExtra("type", type)
+                    putExtra("name", name)
+                    putExtra("notificationId", notificationId)
+                    putExtra("timestamp", scheduledTime)
+                }
+                val onSchedPendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    notificationId + 300,
+                    onSchedIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                builder.addAction(android.R.drawable.ic_menu_edit, "ON SCHED", onSchedPendingIntent)
+            }
+
+            // Button 3: CUSTOM TIME (Opens app dialog)
+            val customTimeIntent = Intent(context, com.example.drinkyourwater.MainActivity::class.java).apply {
                 putExtra("ACTION_LOG_DONE", true)
                 putExtra("type", type)
                 putExtra("name", name)
                 putExtra("notificationId", notificationId)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
-            val logPendingIntent = PendingIntent.getActivity(
+            val customTimePendingIntent = PendingIntent.getActivity(
                 context,
-                notificationId,
-                logIntent,
+                notificationId + 200,
+                customTimeIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            builder.addAction(android.R.drawable.ic_menu_edit, "LOG AS DONE", logPendingIntent)
+            builder.addAction(android.R.drawable.ic_menu_edit, "CUSTOM TIME", customTimePendingIntent)
         }
 
         val notificationManager: NotificationManager =

@@ -48,7 +48,8 @@ class MissedIntervalReceiver : BroadcastReceiver() {
                     "Missed Interval",
                     "You missed your scheduled $name at ${formatTo12Hour(scheduledTime)}. Please take it now if possible!",
                     type,
-                    name
+                    name,
+                    scheduledTime
                 )
             }
         }
