@@ -38,18 +38,21 @@ class DailySummaryWorker(
         }
         
         // 2. Check water intake (only if not paused)
-        val isWaterPaused = dao.getAllWaterRemindersList().any { it.isPaused }
+        val waterReminders = dao.getAllWaterRemindersList()
+        val isWaterPaused = waterReminders.any { it.isPaused }
+        val waterGoal = waterReminders.sumOf { it.timesPerDay }.let { if (it > 0) it else 8 }
+        
         if (!isWaterPaused) {
-            val waterCount = dao.getLogCountInRange("WATER", "Water Reminder", startTime, endTime)
-            if (waterCount < 8) {
+            val waterCount = dao.getLogCountInRange("WATER", "Water", startTime, endTime)
+            if (waterCount < waterGoal) {
                 helper.showNotification(
                     "Hydration Alert",
-                    "You didn't drink enough water in the last 24 hours. Only $waterCount glasses logged!"
+                    "In the last 24 hours, you only drank $waterCount/$waterGoal glasses. Keep it up tomorrow!"
                 )
             } else {
                 helper.showNotification(
                     "Daily Summary",
-                    "You drank $waterCount glasses of water in the last 24 hours! Great job staying hydrated."
+                    "Goal achieved! You drank $waterCount glasses of water in the last 24 hours. Great job!"
                 )
             }
         }

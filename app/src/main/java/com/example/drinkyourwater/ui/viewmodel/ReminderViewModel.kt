@@ -138,7 +138,7 @@ class ReminderViewModel(application: Application) : AndroidViewModel(application
 
     fun markWaterAsDrank(waterReminder: WaterReminder) {
         viewModelScope.launch {
-            reminderDao.insertHistory(ReminderHistory(type = "WATER", name = "Water Reminder"))
+            reminderDao.insertHistory(ReminderHistory(type = "WATER", name = "Water"))
             DrinkWidget().updateAll(getApplication())
         }
     }

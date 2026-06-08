@@ -490,7 +490,7 @@ fun MedicineItem(medicine: Medicine, history: List<ReminderHistory>, onDelete: (
                 }
                 val lastLog = history.filter { it.type == "MEDICINE" && it.name == medicine.name }.maxByOrNull { it.timestamp }?.timestamp
                 val nextTime = DateTimeUtils.calculateNextTime(medicine.time, medicine.intervalMinutes, medicine.timesPerDay, lastLog, wakeupTime, history, "MEDICINE", medicine.name)
-                Text(text = if (medicine.isPaused) "Reminders paused" else if (!isEnabledToday) "Not scheduled for today" else if (isDoneForToday) "All doses taken today!" else "Next: $nextTime", style = MaterialTheme.typography.bodyMedium, color = if (isDoneForToday || !isEnabledToday || medicine.isPaused) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                Text(text = if (medicine.isPaused) "Reminders paused" else if (!isEnabledToday) "Not scheduled for today" else "Next: $nextTime", style = MaterialTheme.typography.bodyMedium, color = if (isDoneForToday || !isEnabledToday || medicine.isPaused) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                 if (isEnabledToday && !isDoneForToday && !medicine.isPaused) {
                     Text(text = "Initial: ${DateTimeUtils.formatTo12Hour(medicine.time)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -556,7 +556,7 @@ fun WaterReminderItem(waterReminder: WaterReminder, history: List<ReminderHistor
                     }
                 }
                 val lastLog = history.filter { it.type == "WATER" }.maxByOrNull { it.timestamp }?.timestamp
-                val nextTime = DateTimeUtils.calculateNextTime(waterReminder.startTime, waterReminder.intervalMinutes, waterReminder.timesPerDay, lastLog, wakeupTime, history, "WATER", "Water Reminder")
+                val nextTime = DateTimeUtils.calculateNextTime(waterReminder.startTime, waterReminder.intervalMinutes, waterReminder.timesPerDay, lastLog, wakeupTime, history, "WATER", "Water")
                 Text(text = if (waterReminder.isPaused) "Reminders paused" else if (!isEnabledToday) "Not scheduled for today" else "Next: $nextTime", style = MaterialTheme.typography.bodyMedium, color = if (!isEnabledToday || waterReminder.isPaused) MaterialTheme.colorScheme.outline else Color(0xFF2196F3), fontWeight = FontWeight.SemiBold)
                 if (isEnabledToday && !waterReminder.isPaused) {
                     Text(text = "Start: ${DateTimeUtils.formatTo12Hour(waterReminder.startTime)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

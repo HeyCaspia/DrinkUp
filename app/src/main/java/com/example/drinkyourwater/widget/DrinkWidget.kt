@@ -22,6 +22,8 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import androidx.glance.appwidget.lazy.LazyColumn
+import androidx.glance.appwidget.lazy.items
 import com.example.drinkyourwater.MainActivity
 import com.example.drinkyourwater.R
 import com.example.drinkyourwater.data.ReminderDatabase
@@ -50,7 +52,6 @@ class DrinkWidget : GlanceAppWidget() {
         // Fetch direct snapshots
         val medicines = withContext(Dispatchers.IO) { dao.getAllMedicinesList() }
         val waterReminders = withContext(Dispatchers.IO) { dao.getAllWaterRemindersList() }
-        val history = withContext(Dispatchers.IO) { dao.getHistorySinceList(cycleStartTime) }
         val allHistory = withContext(Dispatchers.IO) { dao.getHistorySinceList(0) } 
         
         val currentDay = now.get(Calendar.DAY_OF_WEEK)
@@ -60,16 +61,16 @@ class DrinkWidget : GlanceAppWidget() {
             val enabledDays = med.repeatDays.split(",").filter { it.isNotEmpty() }.map { it.toInt() }
             enabledDays.isEmpty() || enabledDays.contains(currentDay)
         }
-        
+
+        // Only show items that still have pending doses/glasses in this cycle
         val pendingMeds = medsToday.filter { med ->
-            val taken = history.count { it.type == "MEDICINE" && it.name == med.name }
-            taken < med.timesPerDay
+            val takenInCycle = allHistory.count { it.type == "MEDICINE" && it.name == med.name && it.timestamp >= cycleStartTime }
+            takenInCycle < med.timesPerDay
         }
         
-        // Water progress
-        val waterDrank = history.count { it.type == "WATER" && it.name == "Water Reminder" }
-        val waterGoal = if (waterReminders.isNotEmpty()) waterReminders.sumOf { it.timesPerDay } else 8
-        val isWaterPending = waterDrank < waterGoal
+        val waterDrankInCycle = allHistory.count { it.type == "WATER" && it.name == "Water" && it.timestamp >= cycleStartTime }
+        val waterGoal = waterReminders.sumOf { it.timesPerDay }
+        val isWaterPending = waterReminders.isNotEmpty() && waterDrankInCycle < waterGoal
 
         provideContent {
             Column(
@@ -118,33 +119,37 @@ class DrinkWidget : GlanceAppWidget() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "You're good for today!",
+                            text = "All set for today!",
                             style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium, color = ColorProvider(Color.Gray))
                         )
                     }
                 } else {
-                    pendingMeds.take(3).forEach { med ->
-                        val lastLog = allHistory.filter { it.type == "MEDICINE" && it.name == med.name }.maxByOrNull { it.timestamp }?.timestamp
-                        val nextTime = DateTimeUtils.calculateNextTime(med.time, med.intervalMinutes, med.timesPerDay, lastLog, wakeupTime, allHistory, "MEDICINE", med.name)
+                    LazyColumn(
+                        modifier = GlanceModifier.fillMaxSize()
+                    ) {
+                        items(pendingMeds) { med ->
+                            val lastLog = allHistory.filter { it.type == "MEDICINE" && it.name == med.name }.maxByOrNull { it.timestamp }?.timestamp
+                            val nextTime = DateTimeUtils.calculateNextTime(med.time, med.intervalMinutes, med.timesPerDay, lastLog, wakeupTime, allHistory, "MEDICINE", med.name)
+                            
+                            WidgetRow(
+                                label = med.name,
+                                nextTime = nextTime,
+                                color = Color(0xFF1976D2)
+                            )
+                        }
                         
-                        WidgetRow(
-                            label = med.name,
-                            nextTime = nextTime,
-                            color = Color(0xFF1976D2)
-                        )
-                    }
-                    
-                    if (isWaterPending) {
-                        val lastWaterLog = allHistory.filter { it.type == "WATER" }.maxByOrNull { it.timestamp }?.timestamp
-                        val nextWaterTime = if (waterReminders.isNotEmpty()) {
-                            DateTimeUtils.calculateNextTime(waterReminders.first().startTime, waterReminders.first().intervalMinutes, waterReminders.first().timesPerDay, lastWaterLog, wakeupTime, allHistory, "WATER", "Water Reminder")
-                        } else "Pending"
+                        if (isWaterPending) {
+                            item {
+                                val lastWaterLog = allHistory.filter { it.type == "WATER" }.maxByOrNull { it.timestamp }?.timestamp
+                                val nextWaterTime = DateTimeUtils.calculateNextTime(waterReminders.first().startTime, waterReminders.first().intervalMinutes, waterReminders.first().timesPerDay, lastWaterLog, wakeupTime, allHistory, "WATER", "Water")
 
-                        WidgetRow(
-                            label = "Water",
-                            nextTime = nextWaterTime,
-                            color = Color(0xFF0288D1)
-                        )
+                                WidgetRow(
+                                    label = "Water",
+                                    nextTime = nextWaterTime,
+                                    color = Color(0xFF0288D1)
+                                )
+                            }
+                        }
                     }
                 }
             }

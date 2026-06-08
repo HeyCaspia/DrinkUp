@@ -33,7 +33,7 @@ object DateTimeUtils {
                     set(Calendar.SECOND, 0)
                     add(Calendar.DAY_OF_YEAR, 1)
                 }
-                return formatTo12Hour(sdf24.format(startCalTomorrow.time))
+                return "${formatTo12Hour(sdf24.format(startCalTomorrow.time))} (Tomorrow)"
             }
         }
 

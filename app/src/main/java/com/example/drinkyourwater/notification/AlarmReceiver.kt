@@ -50,7 +50,7 @@ class AlarmReceiver : BroadcastReceiver() {
                     val countInCycle = dao.getLogCountInRange("MEDICINE", medicine.name, cycleStartTime, System.currentTimeMillis())
                     if (countInCycle >= medicine.timesPerDay) return@launch
                 } else if (type == "WATER" && water != null) {
-                    val countInCycle = dao.getLogCountInRange("WATER", "Water Reminder", cycleStartTime, System.currentTimeMillis())
+                    val countInCycle = dao.getLogCountInRange("WATER", "Water", cycleStartTime, System.currentTimeMillis())
                     if (countInCycle >= water.timesPerDay) return@launch
                 }
 
