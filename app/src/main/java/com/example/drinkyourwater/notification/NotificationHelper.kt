@@ -52,9 +52,9 @@ class NotificationHelper(private val context: Context) {
         return bitmap
     }
 
-    fun showNotification(title: String, message: String, type: String? = null, name: String? = null, scheduledTime: Long? = null) {
+    fun showNotification(title: String, message: String, type: String? = null, name: String? = null, scheduledTime: Long? = null, medicineId: Int? = null) {
         val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-        val notificationId = name?.hashCode() ?: title.hashCode()
+        val notificationId = medicineId ?: name?.hashCode() ?: title.hashCode()
         
         val largeIcon = getBitmapFromVectorDrawable(R.drawable.ic_worm_happy)
         
@@ -75,6 +75,7 @@ class NotificationHelper(private val context: Context) {
             putExtra("ACTION_LOG_DONE", true)
             putExtra("type", type)
             putExtra("name", name)
+            putExtra("medicineId", medicineId)
             putExtra("notificationId", notificationId)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -91,6 +92,7 @@ class NotificationHelper(private val context: Context) {
             val dismissIntent = Intent(context, NotificationDismissReceiver::class.java).apply {
                 putExtra("type", type)
                 putExtra("name", name)
+                putExtra("medicineId", medicineId)
                 putExtra("scheduledTime", scheduledTime)
                 putExtra("title", title)
                 putExtra("message", message)
@@ -107,6 +109,7 @@ class NotificationHelper(private val context: Context) {
             val justNowIntent = Intent(context, LogActionReceiver::class.java).apply {
                 putExtra("type", type)
                 putExtra("name", name)
+                putExtra("medicineId", medicineId)
                 putExtra("notificationId", notificationId)
             }
             val justNowPendingIntent = PendingIntent.getBroadcast(
@@ -122,6 +125,7 @@ class NotificationHelper(private val context: Context) {
                 val onSchedIntent = Intent(context, LogActionReceiver::class.java).apply {
                     putExtra("type", type)
                     putExtra("name", name)
+                    putExtra("medicineId", medicineId)
                     putExtra("notificationId", notificationId)
                     putExtra("timestamp", scheduledTime)
                 }

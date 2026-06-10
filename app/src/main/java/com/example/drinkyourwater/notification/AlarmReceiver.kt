@@ -19,6 +19,7 @@ class AlarmReceiver : BroadcastReceiver() {
         val message = intent.getStringExtra("message") ?: "Time to drink!"
         val type = intent.getStringExtra("type")
         val name = intent.getStringExtra("name")
+        val medicineId = intent.getIntExtra("medicineId", -1).let { if (it == -1) null else it }
         val scheduledTime = intent.getLongExtra("scheduledTime", 0L)
         
         val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -34,7 +35,10 @@ class AlarmReceiver : BroadcastReceiver() {
             val dao = database.reminderDao()
             
             CoroutineScope(Dispatchers.IO).launch {
-                val medicine = if (type == "MEDICINE") dao.getAllMedicinesList().find { it.name == name } else null
+                val medicine = if (type == "MEDICINE") {
+                    if (medicineId != null) dao.getAllMedicinesList().find { it.id == medicineId }
+                    else dao.getAllMedicinesList().find { it.name == name }
+                } else null
                 val water = if (type == "WATER") dao.getAllWaterRemindersList().firstOrNull() else null
 
                 // 1. Check if item exists and is not paused
@@ -49,21 +53,21 @@ class AlarmReceiver : BroadcastReceiver() {
                 val cycleStartTime = DateTimeUtils.getLastWakeUpTime(wakeupTime)
                 
                 if (type == "MEDICINE" && medicine != null) {
-                    val countInCycle = dao.getLogCountInRange("MEDICINE", medicine.name, cycleStartTime, System.currentTimeMillis())
+                    val countInCycle = dao.getMedicineCountByCycle(medicine.id, cycleStartTime)
                     if (countInCycle >= medicine.timesPerDay) return@launch
                 } else if (type == "WATER" && water != null) {
-                    val countInCycle = dao.getLogCountInRange("WATER", "Water", cycleStartTime, System.currentTimeMillis())
+                    val countInCycle = dao.getLogCountInRange("WATER", null, cycleStartTime, System.currentTimeMillis())
                     if (countInCycle >= water.timesPerDay) return@launch
                 }
 
                 // 3. Check if user already logged this specific interval (T-20m window)
                 if (scheduledTime > 0) {
                     val logWindowStart = scheduledTime - (20 * 60 * 1000)
-                    val logCount = dao.getLogCountInRange(type, name, logWindowStart, System.currentTimeMillis())
+                    val logCount = dao.getLogCountInRange(type, medicineId, logWindowStart, System.currentTimeMillis())
                     if (logCount > 0) return@launch
                 }
                 
-                NotificationHelper(context).showNotification(title, message, type, name, scheduledTime)
+                NotificationHelper(context).showNotification(title, message, type, name, scheduledTime, medicineId)
 
                 // Start the nagging cycle if this was a primary reminder (not a warning)
                 if (scheduledTime > 0) {

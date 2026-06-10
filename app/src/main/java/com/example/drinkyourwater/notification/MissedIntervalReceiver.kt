@@ -15,6 +15,7 @@ class MissedIntervalReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val type = intent.getStringExtra("type") ?: return
         val name = intent.getStringExtra("name") ?: return
+        val medicineId = intent.getIntExtra("medicineId", -1).let { if (it == -1) null else it }
         val scheduledTime = intent.getLongExtra("scheduledTime", 0L)
         
         val database = ReminderDatabase.getDatabase(context)
@@ -29,7 +30,10 @@ class MissedIntervalReceiver : BroadcastReceiver() {
         }
 
         CoroutineScope(Dispatchers.IO).launch {
-            val medicine = if (type == "MEDICINE") dao.getAllMedicinesList().find { it.name == name } else null
+            val medicine = if (type == "MEDICINE") {
+                if (medicineId != null) dao.getAllMedicinesList().find { it.id == medicineId }
+                else dao.getAllMedicinesList().find { it.name == name }
+            } else null
             val water = if (type == "WATER") dao.getAllWaterRemindersList().firstOrNull() else null
 
             val existsAndNotPaused = when (type) {
@@ -43,7 +47,7 @@ class MissedIntervalReceiver : BroadcastReceiver() {
             val startTime = scheduledTime - (15 * 60 * 1000)
             val endTime = System.currentTimeMillis()
             
-            val count = dao.getLogCountInRange(type, name, startTime, endTime)
+            val count = dao.getLogCountInRange(type, medicineId, startTime, endTime)
             
             if (count == 0) {
                 NotificationHelper(context).showNotification(
@@ -51,22 +55,24 @@ class MissedIntervalReceiver : BroadcastReceiver() {
                     "You missed your scheduled $name at ${formatTo12Hour(scheduledTime)}. Please take it now if possible!",
                     type,
                     name,
-                    scheduledTime
+                    scheduledTime,
+                    medicineId
                 )
 
                 // Reschedule nag in 30 minutes
                 val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-                val intent = Intent(context, MissedIntervalReceiver::class.java).apply {
+                val nagIntent = Intent(context, MissedIntervalReceiver::class.java).apply {
                     putExtra("type", type)
                     putExtra("name", name)
+                    putExtra("medicineId", medicineId)
                     putExtra("scheduledTime", scheduledTime)
                 }
                 
-                val requestCode = Math.abs(name.hashCode() + (scheduledTime % 100000).toInt() + 3000000)
+                val requestCode = Math.abs((medicineId ?: name.hashCode()) + (scheduledTime % 100000).toInt() + 3000000)
                 val pendingIntent = PendingIntent.getBroadcast(
                     context,
                     requestCode,
-                    intent,
+                    nagIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
 

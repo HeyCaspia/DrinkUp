@@ -64,7 +64,7 @@ class DrinkWidget : GlanceAppWidget() {
 
         // Only show items that still have pending doses/glasses in this cycle
         val pendingMeds = medsToday.filter { med ->
-            val takenInCycle = allHistory.count { it.type == "MEDICINE" && it.name == med.name && it.timestamp >= cycleStartTime }
+            val takenInCycle = allHistory.count { it.type == "MEDICINE" && it.medicineId == med.id && it.timestamp >= cycleStartTime }
             takenInCycle < med.timesPerDay
         }
         
@@ -128,8 +128,8 @@ class DrinkWidget : GlanceAppWidget() {
                         modifier = GlanceModifier.fillMaxSize()
                     ) {
                         items(pendingMeds) { med ->
-                            val lastLog = allHistory.filter { it.type == "MEDICINE" && it.name == med.name }.maxByOrNull { it.timestamp }?.timestamp
-                            val nextTime = DateTimeUtils.calculateNextTime(med.time, med.intervalMinutes, med.timesPerDay, lastLog, wakeupTime, allHistory, "MEDICINE", med.name)
+                            val lastLog = allHistory.filter { it.type == "MEDICINE" && it.medicineId == med.id }.maxByOrNull { it.timestamp }?.timestamp
+                            val nextTime = DateTimeUtils.calculateNextTime(med.time, med.intervalMinutes, med.timesPerDay, lastLog, wakeupTime, allHistory, "MEDICINE", med.name, med.id)
                             
                             WidgetRow(
                                 label = med.name,

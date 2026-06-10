@@ -62,9 +62,10 @@ class MainActivity : ComponentActivity() {
         if (intent?.getBooleanExtra("ACTION_LOG_DONE", false) == true) {
             val type = intent.getStringExtra("type") ?: return
             val name = intent.getStringExtra("name") ?: return
+            val medicineId = intent.getIntExtra("medicineId", -1).let { if (it == -1) null else it }
             val notificationId = intent.getIntExtra("notificationId", 0)
 
-            viewModel.requestManualLog(type, name)
+            viewModel.requestManualLog(type, name, medicineId)
 
             val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.cancel(notificationId)

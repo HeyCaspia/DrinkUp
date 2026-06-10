@@ -10,5 +10,6 @@ data class ReminderHistory(
     val id: Int = 0,
     val type: String, // "MEDICINE" or "WATER"
     val name: String,
+    val medicineId: Int? = null,
     val timestamp: Long = System.currentTimeMillis()
 )

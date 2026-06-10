@@ -45,9 +45,9 @@ interface ReminderDao {
     @Query("SELECT COUNT(*) FROM reminder_history WHERE type = 'WATER' AND timestamp >= :startTime")
     suspend fun getWaterCountSince(startTime: Long): Int
 
-    @Query("SELECT COUNT(*) FROM reminder_history WHERE type = 'MEDICINE' AND name = :name AND timestamp >= :startTime")
-    suspend fun getMedicineCountSince(name: String, startTime: Long): Int
+    @Query("SELECT COUNT(*) FROM reminder_history WHERE type = 'MEDICINE' AND medicineId = :medicineId AND timestamp >= :startTime")
+    suspend fun getMedicineCountByCycle(medicineId: Int, startTime: Long): Int
 
-    @Query("SELECT COUNT(*) FROM reminder_history WHERE type = :type AND name = :name AND timestamp >= :startTime AND timestamp <= :endTime")
-    suspend fun getLogCountInRange(type: String, name: String, startTime: Long, endTime: Long): Int
+    @Query("SELECT COUNT(*) FROM reminder_history WHERE type = :type AND ((:type = 'WATER') OR medicineId = :medicineId) AND timestamp >= :startTime AND timestamp <= :endTime")
+    suspend fun getLogCountInRange(type: String, medicineId: Int?, startTime: Long, endTime: Long): Int
 }

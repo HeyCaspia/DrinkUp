@@ -17,13 +17,14 @@ class LogActionReceiver : BroadcastReceiver() {
         val type = intent.getStringExtra("type") ?: return
         val name = intent.getStringExtra("name") ?: return
         val notificationId = intent.getIntExtra("notificationId", 0)
+        val medicineId = intent.getIntExtra("medicineId", -1).let { if (it == -1) null else it }
         val timestamp = intent.getLongExtra("timestamp", System.currentTimeMillis())
 
         val database = ReminderDatabase.getDatabase(context)
         val dao = database.reminderDao()
 
         CoroutineScope(Dispatchers.IO).launch {
-            dao.insertHistory(ReminderHistory(type = type, name = name, timestamp = timestamp))
+            dao.insertHistory(ReminderHistory(type = type, name = name, medicineId = medicineId, timestamp = timestamp))
             DrinkWidget().updateAll(context)
             
             // Cancel the notification after logging

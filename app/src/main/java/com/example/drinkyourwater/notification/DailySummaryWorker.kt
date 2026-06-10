@@ -24,7 +24,7 @@ class DailySummaryWorker(
         val missedMedicines = mutableListOf<String>()
         
         for (med in medicines) {
-            val countInWindow = dao.getLogCountInRange("MEDICINE", med.name, startTime, endTime)
+            val countInWindow = dao.getLogCountInRange("MEDICINE", med.id, startTime, endTime)
             if (countInWindow < med.timesPerDay) {
                 missedMedicines.add(med.name)
             }
@@ -43,7 +43,7 @@ class DailySummaryWorker(
         val waterGoal = waterReminders.sumOf { it.timesPerDay }.let { if (it > 0) it else 8 }
         
         if (!isWaterPaused) {
-            val waterCount = dao.getLogCountInRange("WATER", "Water", startTime, endTime)
+            val waterCount = dao.getLogCountInRange("WATER", null, startTime, endTime)
             if (waterCount < waterGoal) {
                 helper.showNotification(
                     "Hydration Alert",

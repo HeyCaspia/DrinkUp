@@ -15,13 +15,15 @@ object DateTimeUtils {
         }
     }
 
-    fun calculateNextTime(startTime24: String, intervalMinutes: Int = 0, timesPerDay: Int = 1, lastLogTime: Long? = null, wakeupTimeStr: String? = null, history: List<com.example.drinkyourwater.data.ReminderHistory>? = null, type: String? = null, name: String? = null): String {
+    fun calculateNextTime(startTime24: String, intervalMinutes: Int = 0, timesPerDay: Int = 1, lastLogTime: Long? = null, wakeupTimeStr: String? = null, history: List<com.example.drinkyourwater.data.ReminderHistory>? = null, type: String? = null, name: String? = null, medicineId: Int? = null): String {
         val sdf24 = SimpleDateFormat("HH:mm", Locale.getDefault())
         
         // Check if daily goal is reached based on sleep cycle
-        if (wakeupTimeStr != null && history != null && type != null && name != null) {
+        if (wakeupTimeStr != null && history != null && type != null) {
             val cycleStartTime = getLastWakeUpTime(wakeupTimeStr)
-            val countInCycle = history.count { it.type == type && it.name == name && it.timestamp >= cycleStartTime }
+            val countInCycle = history.count { 
+                it.type == type && (if (type == "WATER") true else it.medicineId == medicineId) && it.timestamp >= cycleStartTime 
+            }
             
             if (countInCycle >= timesPerDay) {
                 // Goal reached! Reset to usual start time for tomorrow.

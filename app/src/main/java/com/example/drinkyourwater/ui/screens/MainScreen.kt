@@ -107,14 +107,15 @@ fun MainScreen(
                 showManualLogDialog = false
                 viewModel.clearLogRequest()
             },
-            onAdd = { type, name, date, time ->
-                viewModel.addManualHistory(type, name, date, time)
+            onAdd = { type, name, date, time, medicineId ->
+                viewModel.addManualHistory(type, name, date, time, medicineId)
                 showManualLogDialog = false
                 viewModel.clearLogRequest()
             },
             medicines = medicines,
             initialType = pendingLogRequest?.first ?: "WATER",
-            initialName = pendingLogRequest?.second ?: "Water"
+            initialName = pendingLogRequest?.second ?: "Water",
+            initialMedicineId = pendingLogRequest?.third
         )
     }
 
@@ -463,7 +464,7 @@ fun MedicineItem(medicine: Medicine, history: List<ReminderHistory>, onDelete: (
     val currentDayOfWeek = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
     val enabledDays = medicine.repeatDays.split(",").filter { it.isNotEmpty() }.map { it.toInt() }
     val isEnabledToday = enabledDays.isEmpty() || enabledDays.contains(currentDayOfWeek)
-    val dosesTakenInCycle = history.count { it.type == "MEDICINE" && it.name == medicine.name && it.timestamp >= cycleStartTime }
+    val dosesTakenInCycle = history.count { it.type == "MEDICINE" && it.medicineId == medicine.id && it.timestamp >= cycleStartTime }
     val isDoneForToday = dosesTakenInCycle >= medicine.timesPerDay
 
     Card(
@@ -488,8 +489,8 @@ fun MedicineItem(medicine: Medicine, history: List<ReminderHistory>, onDelete: (
                         }
                     }
                 }
-                val lastLog = history.filter { it.type == "MEDICINE" && it.name == medicine.name }.maxByOrNull { it.timestamp }?.timestamp
-                val nextTime = DateTimeUtils.calculateNextTime(medicine.time, medicine.intervalMinutes, medicine.timesPerDay, lastLog, wakeupTime, history, "MEDICINE", medicine.name)
+                val lastLog = history.filter { it.type == "MEDICINE" && it.medicineId == medicine.id }.maxByOrNull { it.timestamp }?.timestamp
+                val nextTime = DateTimeUtils.calculateNextTime(medicine.time, medicine.intervalMinutes, medicine.timesPerDay, lastLog, wakeupTime, history, "MEDICINE", medicine.name, medicine.id)
                 Text(text = if (medicine.isPaused) "Reminders paused" else if (!isEnabledToday) "Not scheduled for today" else "Next: $nextTime", style = MaterialTheme.typography.bodyMedium, color = if (isDoneForToday || !isEnabledToday || medicine.isPaused) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                 if (isEnabledToday && !isDoneForToday && !medicine.isPaused) {
                     Text(text = "Initial: ${DateTimeUtils.formatTo12Hour(medicine.time)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -556,7 +557,7 @@ fun WaterReminderItem(waterReminder: WaterReminder, history: List<ReminderHistor
                     }
                 }
                 val lastLog = history.filter { it.type == "WATER" }.maxByOrNull { it.timestamp }?.timestamp
-                val nextTime = DateTimeUtils.calculateNextTime(waterReminder.startTime, waterReminder.intervalMinutes, waterReminder.timesPerDay, lastLog, wakeupTime, history, "WATER", "Water")
+                val nextTime = DateTimeUtils.calculateNextTime(waterReminder.startTime, waterReminder.intervalMinutes, waterReminder.timesPerDay, lastLog, wakeupTime, history, "WATER", "Water", null)
                 Text(text = if (waterReminder.isPaused) "Reminders paused" else if (!isEnabledToday) "Not scheduled for today" else "Next: $nextTime", style = MaterialTheme.typography.bodyMedium, color = if (!isEnabledToday || waterReminder.isPaused) MaterialTheme.colorScheme.outline else Color(0xFF2196F3), fontWeight = FontWeight.SemiBold)
                 if (isEnabledToday && !waterReminder.isPaused) {
                     Text(text = "Start: ${DateTimeUtils.formatTo12Hour(waterReminder.startTime)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -764,14 +765,19 @@ fun DayOfWeekSelector(selectedDays: Set<Int>, onDaysChanged: (Set<Int>) -> Unit)
 @Composable
 fun ManualLogDialog(
     onDismiss: () -> Unit, 
-    onAdd: (String, String, String, String) -> Unit, 
+    onAdd: (String, String, String, String, Int?) -> Unit, 
     medicines: List<Medicine>,
     initialType: String = "WATER",
-    initialName: String = "Water"
+    initialName: String = "Water",
+    initialMedicineId: Int? = null
 ) {
-    var type by remember { mutableStateOf(initialType) }; var name by remember { mutableStateOf(initialName) }
-    var date by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())) }; var time by remember { mutableStateOf(SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())) }
-    var expanded by remember { mutableStateOf(false) }; var showTimePicker by remember { mutableStateOf(false) }
+    var type by remember { mutableStateOf(initialType) }
+    var name by remember { mutableStateOf(initialName) }
+    var medicineId by remember { mutableStateOf(initialMedicineId) }
+    var date by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())) }
+    var time by remember { mutableStateOf(SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())) }
+    var expanded by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
     val timePickerState = rememberTimePickerState(initialHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY), initialMinute = Calendar.getInstance().get(Calendar.MINUTE), is24Hour = false)
 
     if (showTimePicker) {
@@ -780,14 +786,43 @@ fun ManualLogDialog(
 
     val medicineOptions = medicines.map { it.name }.distinct() + "Others"
     AlertDialog(
-        onDismissRequest = onDismiss, confirmButton = { Button(onClick = { onAdd(type, name, date, time) }, enabled = name.isNotBlank()) { Text("Log") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }, title = { Text("Manual History Log") },
+        onDismissRequest = onDismiss, 
+        confirmButton = { 
+            Button(onClick = { 
+                val finalId = if (type == "WATER") null else {
+                    medicines.find { it.id == medicineId }?.id ?: medicines.find { it.name == name }?.id
+                }
+                onAdd(type, name, date, time, finalId) 
+            }, enabled = name.isNotBlank()) { Text("Log") } 
+        }, 
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }, title = { Text("Manual History Log") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = type == "WATER", onClick = { type = "WATER"; name = "Water" }); Text("Water"); Spacer(Modifier.width(16.dp)); RadioButton(selected = type == "MEDICINE", onClick = { type = "MEDICINE"; name = medicineOptions.firstOrNull() ?: "" }); Text("Medicine") }
+                Row(verticalAlignment = Alignment.CenterVertically) { 
+                    RadioButton(selected = type == "WATER", onClick = { type = "WATER"; name = "Water"; medicineId = null }); Text("Water")
+                    Spacer(Modifier.width(16.dp))
+                    RadioButton(selected = type == "MEDICINE", onClick = { type = "MEDICINE"; name = medicineOptions.firstOrNull() ?: ""; medicineId = medicines.find { it.name == name }?.id }); Text("Medicine") 
+                }
                 if (type == "MEDICINE") {
                     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
                         OutlinedTextField(value = if (name in medicines.map { it.name }) name else if (name == "") "" else if (name in medicineOptions) name else "Others", onValueChange = {}, readOnly = true, label = { Text("Select Medicine") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) }, modifier = Modifier.menuAnchor().fillMaxWidth())
-                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) { medicineOptions.forEach { option -> DropdownMenuItem(text = { Text(option) }, onClick = { if (option != "Others") name = option else name = ""; expanded = false }) } }
+                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) { 
+                            medicineOptions.forEach { option -> 
+                                DropdownMenuItem(
+                                    text = { Text(option) }, 
+                                    onClick = { 
+                                        if (option != "Others") {
+                                            name = option
+                                            medicineId = medicines.find { it.name == option }?.id
+                                        } else {
+                                            name = ""
+                                            medicineId = null
+                                        }
+                                        expanded = false 
+                                    }
+                                ) 
+                            } 
+                        }
                     }
                     if (name !in medicines.map { it.name } && name != "Water") OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Medicine Name") }, modifier = Modifier.fillMaxWidth())
                 }
