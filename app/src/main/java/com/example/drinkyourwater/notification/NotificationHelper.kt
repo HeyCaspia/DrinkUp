@@ -70,7 +70,39 @@ class NotificationHelper(private val context: Context) {
             .setAutoCancel(true)
             .setColor(context.getColor(android.R.color.holo_green_dark))
 
+        // Set Content Intent (Clicking the notification opens the app to log custom time)
+        val clickIntent = Intent(context, com.example.drinkyourwater.MainActivity::class.java).apply {
+            putExtra("ACTION_LOG_DONE", true)
+            putExtra("type", type)
+            putExtra("name", name)
+            putExtra("notificationId", notificationId)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val clickPendingIntent = PendingIntent.getActivity(
+            context,
+            notificationId + 500,
+            clickIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        builder.setContentIntent(clickPendingIntent)
+
         if (type != null && name != null) {
+            // Set Delete Intent (Swiping away the notification triggers a reschedule)
+            val dismissIntent = Intent(context, NotificationDismissReceiver::class.java).apply {
+                putExtra("type", type)
+                putExtra("name", name)
+                putExtra("scheduledTime", scheduledTime)
+                putExtra("title", title)
+                putExtra("message", message)
+            }
+            val dismissPendingIntent = PendingIntent.getBroadcast(
+                context,
+                notificationId + 600,
+                dismissIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.setDeleteIntent(dismissPendingIntent)
+
             // Button 1: JUST NOW (Background action using current time)
             val justNowIntent = Intent(context, LogActionReceiver::class.java).apply {
                 putExtra("type", type)
@@ -83,7 +115,7 @@ class NotificationHelper(private val context: Context) {
                 justNowIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            builder.addAction(android.R.drawable.ic_menu_edit, "JUST NOW", justNowPendingIntent)
+            builder.addAction(0, "JUST NOW", justNowPendingIntent)
 
             // Button 2: ON SCHED (Background action using scheduled time)
             if (scheduledTime != null && scheduledTime > 0) {
@@ -99,24 +131,8 @@ class NotificationHelper(private val context: Context) {
                     onSchedIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
-                builder.addAction(android.R.drawable.ic_menu_edit, "ON SCHED", onSchedPendingIntent)
+                builder.addAction(0, "ON SCHED", onSchedPendingIntent)
             }
-
-            // Button 3: CUSTOM TIME (Opens app dialog)
-            val customTimeIntent = Intent(context, com.example.drinkyourwater.MainActivity::class.java).apply {
-                putExtra("ACTION_LOG_DONE", true)
-                putExtra("type", type)
-                putExtra("name", name)
-                putExtra("notificationId", notificationId)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            val customTimePendingIntent = PendingIntent.getActivity(
-                context,
-                notificationId + 200,
-                customTimeIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            builder.addAction(android.R.drawable.ic_menu_edit, "CUSTOM TIME", customTimePendingIntent)
         }
 
         val notificationManager: NotificationManager =

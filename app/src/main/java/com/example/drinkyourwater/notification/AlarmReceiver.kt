@@ -3,6 +3,8 @@ package com.example.drinkyourwater.notification
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.app.AlarmManager
+import android.app.PendingIntent
 import com.example.drinkyourwater.data.ReminderDatabase
 import com.example.drinkyourwater.utils.DateTimeUtils
 import kotlinx.coroutines.CoroutineScope
@@ -62,6 +64,29 @@ class AlarmReceiver : BroadcastReceiver() {
                 }
                 
                 NotificationHelper(context).showNotification(title, message, type, name, scheduledTime)
+
+                // Start the nagging cycle if this was a primary reminder (not a warning)
+                if (scheduledTime > 0) {
+                    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                    val nagIntent = Intent(context, MissedIntervalReceiver::class.java).apply {
+                        putExtra("type", type)
+                        putExtra("name", name)
+                        putExtra("scheduledTime", scheduledTime)
+                    }
+                    val requestCode = Math.abs(name.hashCode() + (scheduledTime % 100000).toInt() + 3000000)
+                    val pendingIntent = PendingIntent.getBroadcast(
+                        context,
+                        requestCode,
+                        nagIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    val triggerAt = System.currentTimeMillis() + (30 * 60 * 1000)
+                    if (alarmManager.canScheduleExactAlarms()) {
+                        alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+                    } else {
+                        alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+                    }
+                }
             }
         } else {
             NotificationHelper(context).showNotification(title, message)

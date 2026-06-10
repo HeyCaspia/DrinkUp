@@ -3,6 +3,8 @@ package com.example.drinkyourwater.notification
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.app.AlarmManager
+import android.app.PendingIntent
 import com.example.drinkyourwater.data.ReminderDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +53,29 @@ class MissedIntervalReceiver : BroadcastReceiver() {
                     name,
                     scheduledTime
                 )
+
+                // Reschedule nag in 30 minutes
+                val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                val intent = Intent(context, MissedIntervalReceiver::class.java).apply {
+                    putExtra("type", type)
+                    putExtra("name", name)
+                    putExtra("scheduledTime", scheduledTime)
+                }
+                
+                val requestCode = Math.abs(name.hashCode() + (scheduledTime % 100000).toInt() + 3000000)
+                val pendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    requestCode,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val triggerAt = System.currentTimeMillis() + (30 * 60 * 1000)
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+                } else {
+                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+                }
             }
         }
     }
